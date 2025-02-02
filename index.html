@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <title>PDF結合・分割ツール</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        #drop-zone {
+            border: 5px dashed #5f5f5f;
+            border-radius: 20px;
+            font-size: large;
+            width: 80%;
+            padding: 60px;
+            text-align: center;
+            background-color: #f0f0f0;
+            transition: background-color 0.3s;
+        }
+
+        #drop-zone.dragover {
+            background-color: #c6b7b7;
+            border: 5px dashed #804876;
+        }
+
+        #pdf-list {
+            margin-top: 20px;
+        }
+
+        .pdf-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        .pdf-item .handle {
+            cursor: move;
+            margin-right: 10px;
+        }
+
+        .pdf-item .remove {
+            margin-left: auto;
+            color: red;
+            cursor: pointer;
+        }
+ 
+        .bottom-box {
+            position: absolute;
+            bottom: 10px;
+        }
+
+        .button {
+            display: none;
+            font-size: 20px;
+            padding: 20px;
+            border: 1px solid;
+            border-radius: 8px;
+            transition: 0.3s;
+            text-align: center;
+            background-color: rgb(218, 218, 218);
+        }
+
+        .button:hover {
+            background: #c6b7b7;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>PDF結合・分割ツール</h1>
+
+    <div id="drop-zone">
+        <b>PDFファイルをここにドラッグ＆ドロップ</b><br><br>
+        １ファイル　 -> １頁毎に分割<br>
+        複数ファイル -> 結合　　　　<br>
+    </div>
+
+    <div id="pdf-list"></div>
+
+
+    <button class="button" id="process-btn" disabled></button>
+    <div id="status-message"></div>
+    <div id="download-links"></div>
+
+    <div class="bottom-box">
+        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - <br>
+        このツールについて
+        <li>PDF変換ツール(JavaScript)を読込み、クライアントサイドで完結する</li>
+        <li>このため、サーバー上にファイルをアップロードしない</li>
+        <li>オープンソースの<a href="https://github.com/Hopding/pdf-lib?tab=readme-ov-file">PDF-LIB.js</a>を使用(☆7.2k stars)</li>
+        <li>パスワード保護、電子署名の機能はない</li>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.4.1/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.6/Sortable.min.js"></script>
+    <script>
+        const dropZone = document.getElementById('drop-zone');
+        const pdfList = document.getElementById('pdf-list');
+        const processBtn = document.getElementById('process-btn');
+        const downloadLinks = document.getElementById('download-links');
+        const statusMessage = document.getElementById('status-message');
+
+        let selectedFiles = [];
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        function highlight() {
+            dropZone.classList.add('dragover');
+        }
+
+        function unhighlight() {
+            dropZone.classList.remove('dragover');
+        }
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, unhighlight, false);
+        });
+
+        dropZone.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        }
+
+        function handleFiles(files) {
+            Array.from(files)
+                .filter(file => file.type === 'application/pdf')
+                .forEach(file => {
+                    selectedFiles.push(file);
+                    updatePDFList();
+                });
+        }
+
+        function updatePDFList() {
+            pdfList.innerHTML = '';
+            selectedFiles.forEach((file, index) => {
+                const item = document.createElement('div');
+                item.className = 'pdf-item';
+                item.innerHTML = `  
+                    <span class="handle">☰</span>  
+                    ${file.name}  
+                    <span class="remove" onclick="removeFile(${index})">✖</span>  
+                `;
+                pdfList.appendChild(item);
+            });
+
+            new Sortable(pdfList, {
+                handle: '.handle',
+                animation: 150,
+                onUpdate: function () {
+                    const newOrder = Array.from(pdfList.children).map(item =>
+                        selectedFiles.find(file =>
+                            item.textContent.includes(file.name)
+                        )
+                    );
+                    selectedFiles = newOrder;
+                }
+            });
+
+            updateProcessButton();
+        }
+
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            updatePDFList();
+        }
+
+        function updateProcessButton() {
+            if (selectedFiles.length === 0) {
+                processBtn.style.display = 'none'; // ボタンを非表示
+            } else {
+                processBtn.style.display = 'block'; // ボタンを表示
+                if (selectedFiles.length === 1) {
+                    processBtn.textContent = '分割する';
+                } else {
+                    processBtn.textContent = '結合する';
+                }
+                processBtn.disabled = false;
+            }
+        }
+
+
+        processBtn.addEventListener('click', async () => {
+            if (selectedFiles.length === 0) {
+                alert('PDFを選択してください');
+                return;
+            }
+
+            statusMessage.innerHTML = '処理中...';
+            downloadLinks.innerHTML = '';
+
+            if (selectedFiles.length === 1) {
+                await splitPDF(selectedFiles[0]);
+            } else {
+                await mergePDFs();
+            }
+        });
+
+        async function mergePDFs() {
+            try {
+                const { PDFDocument } = window.PDFLib;
+                const mergedPdf = await PDFDocument.create();
+
+                for (let i = 0; i < selectedFiles.length; i++) {
+                    const file = selectedFiles[i];
+                    statusMessage.innerHTML = `PDFを結合中... (${i + 1}/${selectedFiles.length})`;
+
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await PDFDocument.load(arrayBuffer);
+                    const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+                    copiedPages.forEach(page => mergedPdf.addPage(page));
+                }
+
+                const pdfBytes = await mergedPdf.save();
+                const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                const url = URL.createObjectURL(blob);
+
+                createDownloadLink(url, 'merged.pdf');
+                statusMessage.innerHTML = '結合完了！　↓ファイルをクリックしてダウンロード';
+            } catch (error) {
+                console.error('エラー:', error);
+                statusMessage.innerHTML = 'エラーが発生しました。';
+            }
+        }
+
+        async function splitPDF(file) {
+            try {
+                const { PDFDocument } = window.PDFLib;
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await PDFDocument.load(arrayBuffer);
+                const totalPages = pdf.getPageCount();
+
+                for (let i = 0; i < totalPages; i++) {
+                    const newPdf = await PDFDocument.create();
+                    const [copiedPage] = await newPdf.copyPages(pdf, [i]);
+                    newPdf.addPage(copiedPage);
+
+                    const pdfBytes = await newPdf.save();
+                    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                    const url = URL.createObjectURL(blob);
+                    createDownloadLink(url, `split_page_${i + 1}.pdf`);
+                }
+
+                statusMessage.innerHTML = '分割完了！　↓ファイルをクリックしてダウンロード';
+            } catch (error) {
+                console.error('エラー:', error);
+                statusMessage.innerHTML = 'エラーが発生しました。';
+            }
+        }
+
+        function createDownloadLink(url, fileName) {
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = fileName;
+            link.textContent = fileName;
+            link.style.display = 'block';
+            downloadLinks.appendChild(link);
+        }
+    </script>
+</body>
+
+</html>
